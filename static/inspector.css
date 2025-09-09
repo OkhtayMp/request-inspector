@@ -1,0 +1,195 @@
+/* inspector.css — GitHub-like Light/Dark theme (Primer-ish) */
+
+/* ---------- Color Tokens (Light) ---------- */
+:root{
+  --bg: #ffffff;
+  --fg: #24292f;
+  --muted: #57606a;
+  --border: #d0d7de;
+  --card: #ffffff;
+  --canvas-subtle: #f6f8fa;        /* code background */
+  --accent: #0969da;               /* link / primary */
+  --ok: #1a7f37;                   /* success green */
+  --warn: #9a6700;                 /* attention */
+  --shadow: 0 1px 0 rgba(27,31,36,0.04), 0 8px 24px rgba(140,149,159,0.2);
+  --radius: 6px;
+  --space: 16px;
+  --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  --font-size: 14px;
+}
+
+/* ---------- Color Tokens (Dark) ---------- */
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg: #0d1117;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --border: #30363d;
+    --card: #0d1117;
+    --canvas-subtle: #161b22;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --shadow: 0 0 0 1px rgba(48,54,61,0.6), 0 8px 24px rgba(1,4,9,0.85);
+  }
+}
+
+/* ---------- Base ---------- */
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  font-family:var(--sans);
+  color:var(--fg);
+  background:var(--bg);
+  font-size:var(--font-size);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+/* ---------- Header (GitHub-like) ---------- */
+.Header{
+  position: sticky; top:0; z-index: 30;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.Header-inner{
+  max-width: 980px; margin:0 auto; padding: 10px var(--space);
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.Header-title{
+  margin:0; font-size:16px; font-weight:600; letter-spacing:.2px;
+}
+.Header-pills{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+
+/* ---------- Container ---------- */
+.Container{ max-width: 980px; margin: 0 auto; padding: var(--space); }
+
+/* ---------- Box (GitHub .Box-ish) ---------- */
+.Box{
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  margin-top: 12px;
+}
+.Box-title{
+  margin:0;
+  padding: 10px var(--space);
+  font-size: 14px; font-weight: 600;
+  border-bottom:1px solid var(--border);
+}
+.Box-titleRow{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding: 10px var(--space);
+  border-bottom:1px solid var(--border);
+}
+.Box-body{
+  padding: 10px var(--space);
+}
+
+/* ---------- Labels ---------- */
+.Label{
+  display:inline-block;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  background: var(--canvas-subtle);
+  color: var(--fg);
+}
+.Label.subtle{ opacity:.9 }
+
+/* ---------- Text helpers ---------- */
+.Muted{ color: var(--muted) }
+.ok{ color: var(--ok) }
+.warn{ color: var(--warn) }
+.wrap{ word-break: break-word; overflow-wrap: anywhere }
+
+/* ---------- Buttons (GitHub-like) ---------- */
+.btn{
+  appearance:none; border:1px solid var(--border);
+  background: #f6f8fa; color: var(--fg);
+  padding: 6px 12px; border-radius: 6px;
+  font: inherit; font-size: 13px; cursor:pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.btn:hover{ background:#eef2f6 }
+@media (prefers-color-scheme: dark){
+  .btn{ background:#21262d; color:var(--fg); border-color:var(--border) }
+  .btn:hover{ background:#30363d }
+}
+.btn-outline{
+  background: transparent;
+}
+.btn-outline:hover{
+  background: var(--canvas-subtle);
+}
+
+/* ---------- Tables ---------- */
+.Table{ width:100%; border-collapse: collapse; }
+.Table.minwide{ min-width: 640px; }
+.Table th, .Table td{
+  padding: 8px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.Table th{
+  font-weight: 600; font-size: 12.5px; color: var(--muted);
+}
+.Table tr:hover td{
+  background: color-mix(in oklab, var(--canvas-subtle), transparent 70%);
+}
+
+/* ---------- Scroll wrappers ---------- */
+.vscroll .vscroll-inner{
+  overflow:auto; max-height: 56vh;
+  scrollbar-width: thin; scrollbar-color: var(--muted) transparent;
+}
+.vscroll .vscroll-inner::-webkit-scrollbar{ width:10px; height:10px }
+.vscroll .vscroll-inner::-webkit-scrollbar-thumb{ background:var(--muted); border-radius:10px }
+
+.hscroll .hscroll-inner{
+  overflow-x:auto; overflow-y:visible;
+  scrollbar-width: thin; scrollbar-color: var(--muted) transparent;
+}
+.hscroll .hscroll-inner::-webkit-scrollbar{ height:10px }
+.hscroll .hscroll-inner::-webkit-scrollbar-thumb{ background:var(--muted); border-radius:10px }
+
+/* ---------- Code blocks ---------- */
+code, pre{ font-family: var(--mono); font-size: 12.5px; }
+pre{
+  margin:0;
+  padding: 10px;
+  background: var(--canvas-subtle);
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}
+
+/* ---------- Toast (GitHub-like flash) ---------- */
+.Toast{
+  position: fixed;
+  top: 12px; right: 12px;
+  background: var(--canvas-subtle);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity .15s ease, transform .15s ease;
+  pointer-events: none;
+  font-size: 13px;
+}
+.Toast.show{ opacity: 1; transform: translateY(0) }
+
+/* ---------- Links ---------- */
+a{ color: var(--accent); text-decoration: none }
+a:hover{ text-decoration: underline }

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0d1117">
+
+  <title>request-inspector — OSI View</title>
+
+  <!-- Favicons / PWA -->
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='favicons/apple-touch-icon.png') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicons/favicon-32x32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicons/favicon-16x16.png') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='inspector.css') }}">
+</head>
+<body>
+  <!-- Top brand bar -->
+  <header class="Header" role="banner">
+    <div class="Header-inner" role="navigation" aria-label="Top">
+      <h1 class="Header-title" title="request-inspector">request-inspector</h1>
+      <nav class="Header-pills" aria-label="Primary">
+        <a class="btn btn-outline" href="https://github.com/okhtaymp/request-inspector" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Subheader (separate from Header) -->
+  <section class="Container Subheader" aria-labelledby="sec-intro">
+    <div class="Box">
+      <h2 id="sec-intro" class="Box-title">About</h2>
+      <div class="Box-body">
+        <p class="wrap">
+          Advanced HTTP/OSI request inspector and proxy analysis. Shows hops, XFF/Forwarded chains,
+          origin candidates, anomalies, and an OSI snapshot (L1–L7).
+        </p>
+        <p class="wrap">
+          <span class="Label" title="Server time (UTC)">{{ meta.server_time_utc }}</span>
+          <span class="Label" title="Service version">v{{ meta.service_version }}</span>
+          <span class="Label" title="Request ID">req={{ meta.request_id }}</span>
+          <span class="Label subtle" title="Transparent detection mode">mode={{ meta.transparent_detection_mode }}</span>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <main class="Container" role="main">
+    <!-- Status -->
+    <section class="Box" aria-labelledby="sec-status">
+      <h2 id="sec-status" class="Box-title">Status</h2>
+      <div class="Box-body">
+        <p class="wrap">
+          Proxy class: <code>{{ analysis.proxy_class }}</code>
+          &nbsp;•&nbsp; Transparent:
+          {% if analysis.transparent_proxy %}<span class="ok">true</span>{% else %}<span class="warn">false</span>{% endif %}
+        </p>
+        <p class="wrap">Origin IP: <code>{{ analysis.origin_ip or '-' }}</code></p>
+        <p class="wrap">Top candidates: <code>{{ (analysis.origin_candidates or [])[:3] }}</code></p>
+        <p class="wrap">Leaks: <code>{{ analysis.leaks|length }}</code> &nbsp; Hops: <code>{{ analysis.hop_count }}</code></p>
+        <p class="wrap">Risk: <code>{{ analysis.risk_score }}</code> &nbsp; Anomalies: <code>{{ analysis.anomalies }}</code></p>
+      </div>
+    </section>
+
+    <!-- OSI -->
+    <section class="Box" aria-labelledby="sec-osi">
+      <h2 id="sec-osi" class="Box-title">OSI</h2>
+      <div class="Box-body">
+        <p class="wrap"><strong>L7</strong> method=<code>{{ osi.l7_http.method }}</code> &nbsp; url=<code class="wrap">{{ osi.l7_http.url }}</code></p>
+        <p class="wrap"><strong>L6</strong> https=<code>{{ osi.l6_presentation.https }}</code> &nbsp; tls-keys=<code>{{ osi.l6_presentation.tls and osi.l6_presentation.tls.keys()|list }}</code></p>
+        <p class="wrap"><strong>L5</strong> keep-alive=<code>{{ osi.l5_session.keep_alive }}</code> &nbsp; upgrade=<code>{{ osi.l5_session.upgrade or '-' }}</code></p>
+        <p class="wrap"><strong>L4</strong> proto=<code>{{ osi.l4_transport.protocol }}</code> &nbsp; client_port=<code>{{ osi.l4_transport.remote_port }}</code> &nbsp; server_port=<code>{{ osi.l4_transport.server_port }}</code></p>
+        <p class="wrap"><strong>L3</strong> client_ip=<code>{{ osi.l3_network.client_ip }}</code> &nbsp; scope=<code>{{ osi.l3_network.client_scope }}</code> &nbsp; server_local_ip=<code>{{ osi.l3_network.server_local_ip }}</code></p>
+        <p class="wrap"><strong>L2</strong> iface=<code>{{ osi.l2_link.iface or '-' }}</code> &nbsp; mac=<code>{{ osi.l2_link.mac or '-' }}</code> &nbsp; speed={{ osi.l2_link.link_speed_mbps or '-' }}Mbps
+          &nbsp;•&nbsp; <strong>L1</strong> {{ osi.l1_physical.medium }} <span class="Muted">({{ osi.l1_physical.notes }})</span></p>
+      </div>
+    </section>
+
+    <!-- Effective path -->
+    <section class="Box" aria-labelledby="sec-path">
+      <h2 id="sec-path" class="Box-title">Effective path</h2>
+      <div class="Box-body">
+        <p class="wrap">Scheme/Host/Port: <code>{{ analysis.effective_path.scheme }}://{{ analysis.effective_path.host }}:{{ analysis.effective_path.port }}</code></p>
+        <p class="wrap">URL: <code class="wrap">{{ analysis.effective_path.url_example }}</code></p>
+      </div>
+    </section>
+
+    <!-- Hops (vertical scroll allowed) -->
+    <section class="Box" aria-labelledby="sec-hops">
+      <h2 id="sec-hops" class="Box-title">Hops</h2>
+      <div class="Box-body TableWrap vscroll">
+        <div class="TableInner vscroll-inner" role="region" aria-label="Hops table">
+          <table class="Table">
+            <thead>
+              <tr><th>#</th><th>IP</th><th>v</th><th>scope</th><th>role</th><th>source</th><th>proto</th><th>host</th><th>by</th></tr>
+            </thead>
+            <tbody>
+              {% for h in analysis.hops %}
+              <tr>
+                <td>{{ h.order }}</td>
+                <td><code>{{ h.ip }}</code></td>
+                <td>{{ h.ip_version or '—' }}</td>
+                <td>{{ h.scope or '—' }}</td>
+                <td>{{ h.role }}</td>
+                <td>{{ h.source }}</td>
+                <td>{{ h.proto or '—' }}</td>
+                <td>{{ h.host or '—' }}</td>
+                <td>{{ h.by or '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Headers — horizontal scroll ONLY -->
+    <section class="Box" aria-labelledby="sec-headers">
+      <h2 id="sec-headers" class="Box-title">Headers</h2>
+      <div class="Box-body TableWrap hscroll">
+        <div class="TableInner hscroll-inner" role="region" aria-label="Headers table">
+          <table class="Table minwide">
+            <thead><tr><th>Name</th><th>Value</th></tr></thead>
+            <tbody>
+              {% for k, v in request.headers.items() %}
+              <tr>
+                <td class="Muted">{{ k }}</td>
+                <td class="wrap"><code>{{ v }}</code></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Raw JSON -->
+    <section class="Box" aria-labelledby="sec-json">
+      <div class="Box-titleRow">
+        <h2 id="sec-json" class="Box-title">Raw JSON</h2>
+        <button class="btn" id="copyBtn" type="button" title="Copy JSON">Copy JSON</button>
+      </div>
+      <div class="Box-body vscroll">
+        <div class="vscroll-inner" role="region" aria-label="Raw JSON">
+          <pre id="jsonText">{{ raw_json }}</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CLI / cURL Quickstart ============ -->
+    <section class="Box" aria-labelledby="sec-cli">
+      <h2 id="sec-cli" class="Box-title">CLI / cURL quickstart</h2>
+      <div class="Box-body">
+        <p class="Muted">Base URL: <code>https://req.liara.run/</code></p>
+
+        <h3 class="SubTitle">1) Basic JSON</h3>
+        <pre class="Code">$ curl -s https://req.liara.run/json | jq</pre>
+
+        <h3 class="SubTitle">2) Force JSON / HTML</h3>
+        <pre class="Code">$ curl -s -H 'Accept: application/json' https://req.liara.run/ | jq
+$ curl -s -H 'Accept: text/html'        https://req.liara.run/ -o inspector.html</pre>
+
+        <h3 class="SubTitle">3) Quick IP &amp; request headers</h3>
+        <pre class="Code">$ curl -s https://req.liara.run/ip
+$ curl -i https://req.liara.run/headers</pre>
+
+        <h3 class="SubTitle">4) POST JSON (deep mode)</h3>
+        <pre class="Code">$ curl -sX POST 'https://req.liara.run/json?deep=1' \
+  -H 'Content-Type: application/json' \
+  -d '{"hello":"world"}' | jq</pre>
+
+        <h3 class="SubTitle">5) Summary view</h3>
+        <pre class="Code">$ curl -s 'https://req.liara.run/?summary=1' | jq</pre>
+
+        <h3 class="SubTitle">6) Simulate proxy chain</h3>
+        <pre class="Code">$ curl -s 'https://req.liara.run/json?summary=1' \
+  -H 'X-Forwarded-For: 1.1.1.1, 2.2.2.2' \
+  -H 'Forwarded: for=1.1.1.1;proto=https;by=2.2.2.2;host=example.com' | jq</pre>
+
+        <h3 class="SubTitle">7) Add Via header (proxy hop notes)</h3>
+        <pre class="Code">$ curl -s 'https://req.liara.run/json?deep=1' \
+  -H 'Via: 1.1 edge-proxy, 1.1 mid-proxy' | jq</pre>
+
+        <h3 class="SubTitle">8) Echo raw body (binary-safe)</h3>
+        <pre class="Code">$ curl -sX POST 'https://req.liara.run/echo' --data-binary @/etc/hosts | hexdump -C | head</pre>
+
+        <h3 class="SubTitle">9) Set a custom Request-ID</h3>
+        <pre class="Code">$ curl -s 'https://req.liara.run/json' -H 'X-Request-Id: demo-1234' -i</pre>
+
+        <h3 class="SubTitle">10) Save HTML locally</h3>
+        <pre class="Code">$ curl -s https://req.liara.run/html -o inspector.html
+$ xdg-open inspector.html   # macOS: open inspector.html</pre>
+      </div>
+    </section>
+    <!-- ========== /CLI / cURL Quickstart ========== -->
+  </main>
+
+  <!-- Toast (used by Copy JSON) -->
+  <div id="toast" class="Toast" role="status" aria-live="polite" aria-atomic="true">Copied</div>
+
+  <script src="{{ url_for('static', filename='inspector.js') }}" defer></script>
+</body>
+</html>
