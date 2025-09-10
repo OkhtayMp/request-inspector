@@ -38,7 +38,7 @@ app = Flask(__name__, template_folder=str(BASE_DIR / "templates"), static_folder
 
 # ----------------------------- Regexes -----------------------------
 _RE_FORWARDED_PAIR = re.compile(r"(?P<k>[a-zA-Z]+)=((?P<q>\"[^\"]*\")|(?P<t>[^;,\s]+))")
-_IP_TOKEN = re.compile(r"(?<![A-Za-z0-9_:])(?:\\d{1,3}(?:\\.\\d{1,3}){3}|\\[[0-9a-fA-F:]+\\]|[0-9a-fA-F:]{2,})(?![A-Za-z0-9_:])")
+_IP_TOKEN = re.compile(r"(?<![A-Za-z0-9_:])(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]|[0-9a-fA-F:]{2,})(?![A-Za-z0-9_:])")
 
 SINGLE_IP_HEADERS = [
     "X-Real-IP", "True-Client-IP", "Client-IP", "CF-Connecting-IP", "Fastly-Client-Ip",
@@ -385,8 +385,8 @@ def collect_route(req) -> Dict[str, Any]:
 def collect_osi(payload: Dict[str, Any]) -> Dict[str, Any]:
     r = payload["request"]; a = payload["analysis"]
     l7 = {"method": r["method"], "url": r["url"], "path": r["path"], "http_version": r["http_version"],
-          "headers_count": len(r["headers"]), "cookies_count": len(payload["request"].get("cookies", {})) if "cookies" in payload["request"] else 0,
-          "content_type": r["body"]["content_type"], "body_length": r["body"]["length"]}
+            "headers_count": len(r["headers"]), "cookies_count": len(payload["request"].get("cookies", {})) if "cookies" in payload["request"] else 0,
+            "content_type": r["body"]["content_type"], "body_length": r["body"]["length"]}
     env = request.environ
     tls_info = {k: env.get(k) for k in env.keys() if k.startswith("SSL_")}
     if env.get("HTTPS"): tls_info.setdefault("HTTPS", env.get("HTTPS"))
@@ -396,16 +396,16 @@ def collect_osi(payload: Dict[str, Any]) -> Dict[str, Any]:
     l6 = {"https": bool(request.is_secure or env.get("HTTPS") == "on"), "tls": tls_info or None}
     hdrs = r["headers"]; conn = hdrs.get("Connection") or hdrs.get("connection")
     l5 = {"keep_alive": (conn.lower() == "keep-alive") if isinstance(conn, str) else None,
-          "upgrade": hdrs.get("Upgrade") or hdrs.get("upgrade"), "proxy_auth_present": bool(hdrs.get("Proxy-Authorization"))}
+            "upgrade": hdrs.get("Upgrade") or hdrs.get("upgrade"), "proxy_auth_present": bool(hdrs.get("Proxy-Authorization"))}
     remote_port = request.environ.get("REMOTE_PORT"); server_port = request.environ.get("SERVER_PORT")
     l4 = {"protocol": "tcp",
-          "remote_port": int(remote_port) if str(remote_port or "").isdigit() else remote_port,
-          "server_port": int(server_port) if str(server_port or "").isdigit() else server_port}
+            "remote_port": int(remote_port) if str(remote_port or "").isdigit() else remote_port,
+            "server_port": int(server_port) if str(server_port or "").isdigit() else server_port}
     client_ip = r["client"]["remote_addr"]; client_geo = geoip_lookup(client_ip); local_path = infer_local_path_to(client_ip)
     l3 = {"client_ip": client_ip,
-          "client_scope": (_scope_label(ipaddress.ip_address(client_ip)) if client_ip else None) if client_ip else None,
-          "client_rdns": r["client"]["reverse_dns"], "server_local_ip": local_path.get("local_ip"),
-          "geo": client_geo, "hops_public": [h for h in a["hops"] if h.get("public") is True]}
+            "client_scope": (_scope_label(ipaddress.ip_address(client_ip)) if client_ip else None) if client_ip else None,
+            "client_rdns": r["client"]["reverse_dns"], "server_local_ip": local_path.get("local_ip"),
+            "geo": client_geo, "hops_public": [h for h in a["hops"] if h.get("public") is True]}
     l2 = {"iface": local_path.get("iface"), "mac": local_path.get("mac"), "link_speed_mbps": local_path.get("speed_mbps")}
     l1 = {"medium": "ethernet (assumed)", "notes": "Physical-layer specifics need host privileges; reporting NIC speed if exposed by /sys."}
     return {"l7_http": l7, "l6_presentation": l6, "l5_session": l5, "l4_transport": l4, "l3_network": l3, "l2_link": l2, "l1_physical": l1}
@@ -519,8 +519,16 @@ def root():
     resp.headers['X-Request-Id'] = payload['meta'].get('request_id','')
     if payload['meta'].get('traceparent'): resp.headers['Traceparent'] = payload['meta']['traceparent']
     resp.headers['Server'] = 'request-inspector'
-    # resp.headers['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'"
-    resp.headers['Content-Security-Policy'] = "Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self';"
+    resp.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "style-src 'self'; "
+        "script-src 'self'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "manifest-src 'self'; "
+        "frame-ancestors 'none'"
+    )
     return resp
 
 @app.route('/json', methods=['GET','POST'])
@@ -541,13 +549,78 @@ def only_html():
 
 @app.route('/ip', methods=['GET'])
 def client_ip():
-    ip = request.headers.get('CF-Connecting-IP') or request.headers.get('X-Real-IP') or request.remote_addr or ''
-    return Response((ip + "\\n"), mimetype='text/plain')
+    """
+    Return the best-guess client IP.
+    Default: plain text (IP\n) with only public candidates preferred.
+    Options:
+        - ?json=1        → JSON payload with extras
+        - ?private=1     → allow private/CGNAT/loopback candidates if no public origin found
+    Adds response header: X-Client-IP-Source
+    """
+    # Reuse full route/origin analysis logic
+    route = collect_route(request)
+
+    # Immediate peer as safe fallback
+    remote_obj = _get_remote_ip()
+    remote_txt = remote_obj.compressed if remote_obj else ""
+
+    # Our primary: origin_ip (ranked from Forwarded/XFF/single-IP headers; public-only)
+    ip_txt = route.get("origin_ip") or ""
+    source = "origin_ip" if ip_txt else "remote_addr"
+
+    # If no public origin and user allows private, try left-most Forwarded/XFF
+    if not ip_txt and request.args.get("private") == "1":
+        candidate = None
+        fwd = route.get("forwarded_chain") or []
+        xff = route.get("xff_chain") or []
+        if fwd:
+            cand_ip = _clean_token_to_ip((fwd[0] or {}).get("for") or "")
+            if cand_ip:
+                candidate = cand_ip.compressed
+        if not candidate and xff:
+            cand_ip = _clean_token_to_ip(xff[0])
+            if cand_ip:
+                candidate = cand_ip.compressed
+        if candidate and candidate != remote_txt:
+            ip_txt, source = candidate, "forwarded_or_xff(private)"
+
+    # Final fallback
+    if not ip_txt:
+        ip_txt, source = (remote_txt or ""), "remote_addr"
+
+    # Build response (JSON if requested/accepted, else text)
+    wants_json = (request.args.get("json") == "1") or (
+        "application/json" in (request.headers.get("Accept", ""))
+    )
+
+    if wants_json:
+        payload = {
+            "ip": ip_txt,
+            "source": source,
+            "remote_addr": remote_txt,
+            "transparent": bool(route.get("transparent_proxy")),
+            "proxy_class": route.get("proxy_class"),
+            "origin_candidates": route.get("origin_candidates", []),
+            "leaks": route.get("leaks", []),
+        }
+        resp = make_response(jsonify(payload))
+        resp.headers["Content-Type"] = "application/json; charset=utf-8"
+    else:
+        # Plain text with newline for CLI ergonomics
+        if not ip_txt:
+            # no IP at all (extremely rare) → 204 No Content
+            return Response(status=204)
+        resp = Response(ip_txt + "\n", mimetype="text/plain")
+
+    # Helpful meta header to explain how the IP was chosen
+    resp.headers["X-Client-IP-Source"] = source
+    resp.headers["X-Detected-Client-IP"] = ip_txt
+    return resp
 
 @app.route('/headers', methods=['GET'])
 def headers_plain():
     lines = [f"{k}: {v}" for k,v in request.headers.items()]
-    return Response("\\n".join(lines) + "\\n", mimetype='text/plain')
+    return Response("\n".join(lines) + "\n", mimetype='text/plain')
 
 @app.route('/echo', methods=['POST','PUT','PATCH'])
 def echo_body():
